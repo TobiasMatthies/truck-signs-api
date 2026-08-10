@@ -6,7 +6,7 @@
 
 ![Truck Signs](./src/screenshots/Truck_Signs_logo.png)
 
-__Signs for Trucks__ is an online store to buy pre-designed vinyls with custom lines of letters (often call truck letterings).
+**Signs for Trucks** is an online store to buy pre-designed vinyls with custom lines of letters (often call truck letterings).
 The store also allows clients to upload their own designs and to customize them on the website as well.
 
 </div>
@@ -18,13 +18,14 @@ The store also allows clients to upload their own designs and to customize them 
   - [About this Repository](#about-this-repository)
   - [Quickstart](#quickstart)
     - [Prerequisites](#prerequisites)
-    - [Quick Start (local Python environment)](#quick-start-local-python-environment)
+    - [Quick Start (Docker)](#quick-start-docker)
     - [How to Build the Image](#how-to-build-the-image)
   - [Usage](#usage)
     - [Environment Configuration](#environment-configuration)
     - [Building the Container Image](#building-the-container-image)
     - [Running with Docker Compose (recommended)](#running-with-docker-compose-recommended)
     - [Running with `docker run`](#running-with-docker-run)
+    - [Running without Docker (local Python environment)](#running-without-docker-local-python-environment)
     - [Switching Between SQLite and PostgreSQL](#switching-between-sqlite-and-postgresql)
     - [Settings](#settings)
     - [Models](#models)
@@ -50,7 +51,8 @@ The main contents of the repository are:
 - **`src/tsa_products`** – the Django app containing the store's models, serializers and API views
   (categories, products, lettering items, orders, customer image uploads, ...).
 - **`Dockerfile`**, **`docker-compose.yml`** and **`entrypoint.sh`** – everything needed to build and
-  run the API together with a PostgreSQL database as containers.
+  run the API together with a PostgreSQL database as containers. The backend image is built and
+  versioned locally under the tag `tsa-local:1.0.0` (see [Quickstart](#quickstart)).
 - **`docs/`** – supplementary documentation (e.g. linting/testing setup).
 - **`.github/workflows`** – CI pipelines that run linting and tests on every push/PR.
 
@@ -66,41 +68,32 @@ The purpose of the repository is to provide a self-contained, easily deployable 
 
 ### Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) and the [Docker Compose plugin](https://docs.docker.com/compose/install/) (recommended way to run the project)
-- [Python 3.12.x](https://www.python.org/downloads/release/python-3120/) (only needed if you want to run the app without Docker)
+- [Docker](https://docs.docker.com/get-docker/) and the [Docker Compose plugin](https://docs.docker.com/compose/install/) — the standard, supported way to run the project
 - [Git](https://git-scm.com/downloads)
+- [Python 3.12.x](https://www.python.org/downloads/release/python-3120/) — only needed if you want to run the app [without Docker](#running-without-docker-local-python-environment)
 
-### Quick Start (local Python environment)
+### Quick Start (Docker)
 
-If you just want to run the API directly on your machine (without Docker), use SQLite in dev mode:
+The container setup (API + PostgreSQL) is the standard way to run this project:
 
 ```bash
 # 1. Clone the repo
-git clone git@github.com:Developer-Akademie-DevSecOpsKurs/truck-signs-api.git
+git clone git@github.com:TobiasMatthies/truck-signs-api.git
 cd truck-signs-api
 
-# 2. Copy the example environment file
+# 2. Copy the example environment file and fill in the required values
 cp example.env .env
 
-# 3. Create and activate a virtual environment
-python -m venv venv
-source venv/bin/activate      # on Windows: venv\Scripts\activate
+# 3. Build the backend image (see "How to Build the Image")
+docker build -t tsa-local:1.0.0 .
 
-# 4. Install dependencies
-pip install -r requirements.txt
-
-# 5. Apply database migrations (uses SQLite by default, see "Switching Between SQLite and PostgreSQL")
-python src/manage.py makemigrations
-python src/manage.py migrate
-
-# 6. Collect static files
-python src/manage.py collectstatic
-
-# 7. Start the development server
-python src/manage.py runserver
+# 4. Start the API together with its PostgreSQL database
+docker compose up
 ```
 
-The app is now running at [localhost:8000](http://localhost:8000).
+The API is now running at [localhost:8020](http://localhost:8020), and the admin panel at
+[localhost:8020/admin](http://localhost:8020/admin). See [Usage](#usage) for details on
+configuration, the named volumes used for persistence, and alternative ways to run the containers.
 
 ### How to Build the Image
 
@@ -109,12 +102,14 @@ The project ships with a `Dockerfile` that builds a self-contained image running
 `Dockerfile` is located):
 
 ```bash
-docker build -t tsa-local .
+docker build -t tsa-local:1.0.0 .
 ```
 
-This produces a local image tagged `tsa-local`, which is the image referenced by
-`docker-compose.yml`. See [Usage](#usage) for how to configure and run the resulting image,
-either via Docker Compose or with a plain `docker run`.
+This produces a local image tagged `tsa-local:1.0.0`. This tag is what `docker-compose.yml`
+expects for the `backend` service's `image:` field — if you build under a different tag, update
+that field (and the `tsa-local:1.0.0` reference in the `docker run` example below) accordingly.
+See [Usage](#usage) for how to configure and run the resulting image, either via Docker Compose,
+a plain `docker run`, or without Docker at all.
 
 ## Usage
 
@@ -135,35 +130,44 @@ cp example.env .env
 Then edit `.env` and fill in the values that apply to your setup. The following variables are read
 by the application (see `src/tsa_app/settings.py`) and by `docker-compose.yml`:
 
-| Variable | Purpose | Notes |
-| --- | --- | --- |
-| `MODE` | `dev` uses SQLite, `prod` uses PostgreSQL | unset/`dev` needs no DB variables |
-| `DEBUG` / `DEBUG_ENABLED` | Enables Django debug mode | keep `False`/unset in production |
-| `SECRET_KEY` | Django cryptographic secret key | generate a new one, see [Additional Information](#django-and-drf) |
-| `ALLOWED_HOSTS` | Comma-separated list of allowed hostnames | e.g. `localhost,127.0.0.1,tsa-web` |
-| `CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | e.g. the URL of your frontend |
-| `DB_HOST` / `DB_PORT` | Hostname/port of the PostgreSQL server | `tsa_db` / `5432` when using Docker Compose |
-| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | PostgreSQL database name and credentials | used both by the `db` container and by Django |
-| `CLOUD_NAME` / `CLOUD_API_KEY` / `CLOUD_API_SECRET` | Cloudinary credentials for media storage | leave empty to fall back to local file storage |
-| `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | Credentials for sending order emails | any placeholder works while email sending is disabled |
-| `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_EMAIL` / `DJANGO_SUPERUSER_PASSWORD` | Credentials for the admin user auto-created by `entrypoint.sh` | used only inside the Docker container |
+| Variable                                                                             | Purpose                                                        | Notes                                                             |
+| ------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `MODE`                                                                               | `dev` uses SQLite, `prod` uses PostgreSQL                      | unset/`dev` needs no DB variables                                 |
+| `DEBUG` / `DEBUG_ENABLED`                                                            | Enables Django debug mode                                      | keep `False`/unset in production                                  |
+| `SECRET_KEY`                                                                         | Django cryptographic secret key                                | generate a new one, see [Additional Information](#django-and-drf) |
+| `ALLOWED_HOSTS`                                                                      | Comma-separated list of allowed hostnames                      | e.g. `localhost,127.0.0.1,tsa-web`                                |
+| `CORS_ALLOWED_ORIGINS`                                                               | Comma-separated list of allowed CORS origins                   | e.g. the URL of your frontend                                     |
+| `DB_HOST` / `DB_PORT`                                                                | Hostname/port of the PostgreSQL server                         | `tsa_db` / `5432` when using Docker Compose                       |
+| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD`                                | PostgreSQL database name and credentials                       | used both by the `db` container and by Django                     |
+| `CLOUD_NAME` / `CLOUD_API_KEY` / `CLOUD_API_SECRET`                                  | Cloudinary credentials for media storage                       | leave empty to fall back to local file storage                    |
+| `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD`                                            | Credentials for sending order emails                           | any placeholder works while email sending is disabled             |
+| `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_EMAIL` / `DJANGO_SUPERUSER_PASSWORD` | Credentials for the admin user auto-created by `entrypoint.sh` | used only inside the Docker container                             |
 
 Changing these values is the primary way to adapt the deployment: for example, set `MODE=prod` and
 fill in the `POSTGRES_*`/`DB_*` variables to run against PostgreSQL, provide `CLOUD_*` variables to
 store uploaded media on Cloudinary instead of the local filesystem, or adjust `ALLOWED_HOSTS`/
 `CORS_ALLOWED_ORIGINS` to match the domains you deploy to.
 
+> [!NOTE]
+> `docker-compose.yml` does **not** load `.env` wholesale via `env_file`. Instead, each service
+> declares the variables it needs explicitly under `environment:`, with their values coming from
+> `.env` via Compose's automatic variable substitution (`${VARIABLE_NAME}`). This makes it obvious,
+> from the compose file alone, exactly which variables reach each container. If you introduce a new
+> variable in `.env`, you must also add a matching `NAME: ${NAME}` entry under the relevant
+> service's `environment:` block, otherwise it will not be passed into the container.
+
 ### Building the Container Image
 
 ```bash
-docker build -t tsa-local .
+docker build -t tsa-local:1.0.0 .
 ```
 
-- `-t tsa-local` tags the built image as `tsa-local`. This name is what `docker-compose.yml`
-  expects for the `backend` service — if you rename the tag, update the `image:` field in
-  `docker-compose.yml` (or the `tsa-local` reference in the `docker run` example below) accordingly.
-- To rebuild after changing dependencies (`requirements.txt`) or source code, simply re-run the same
-  command; Docker will use its build cache for unchanged layers.
+- `-t tsa-local:1.0.0` tags the built image as `tsa-local` with version `1.0.0`. This tag is what
+  `docker-compose.yml` expects for the `backend` service — if you build under a different
+  name/tag, update the `image:` field in `docker-compose.yml` (or the `tsa-local:1.0.0` reference in
+  the `docker run` example below) accordingly.
+- To rebuild after changing dependencies (`requirements.txt`) or source code, bump the tag (e.g.
+  `1.0.1`) and re-run the same command; Docker will use its build cache for unchanged layers.
 
 ### Running with Docker Compose (recommended)
 
@@ -175,13 +179,16 @@ docker compose up
 
 This starts two containers, as defined in `docker-compose.yml`:
 
-- **`tsa_db`** – a PostgreSQL 18.4 instance, configured from `POSTGRES_DB`/`POSTGRES_USER`/
-  `POSTGRES_PASSWORD` in `.env`, exposed on host port `5432` and persisted in the `postgres_data`
-  volume.
-- **`tsa_backend`** – the Django API built from the `tsa-local` image, exposed on host port `8020`
-  (mapped to container port `8000`), waiting for the database to become healthy before running
-  migrations, collecting static files, creating the superuser and starting `gunicorn`
-  (see `entrypoint.sh`).
+- **`tsa_db`** – a PostgreSQL 18.4 instance, configured from the `POSTGRES_DB`/`POSTGRES_USER`/
+  `POSTGRES_PASSWORD` variables in `.env`, exposed on host port `5432` and persisted in the
+  named volume `postgres_data`.
+- **`tsa_backend`** – the Django API built from the `tsa-local:1.0.0` image, exposed on host port
+  `8020` (mapped to container port `8000`), waiting for the database to become healthy before
+  running migrations, collecting static files, creating the superuser and starting `gunicorn`
+  (see `entrypoint.sh`). Its collected static files and uploaded media are persisted in the named
+  volumes `static_data` and `media_data` rather than bind-mounted from the host, so they survive
+  container recreation without cluttering the working tree; inspect or extract them with
+  `docker volume inspect static_data`/`docker cp` if needed.
 
 The API is then reachable at [localhost:8020](http://localhost:8020), and the admin panel at
 [localhost:8020/admin](http://localhost:8020/admin).
@@ -225,15 +232,51 @@ docker run -d \
   -e DJANGO_SUPERUSER_USERNAME=<admin_username> \
   -e DJANGO_SUPERUSER_EMAIL=<admin_email> \
   -e DJANGO_SUPERUSER_PASSWORD=<admin_password> \
-  -v "$(pwd)/src/staticfiles:/app/src/staticfiles" \
-  -v "$(pwd)/src/media:/app/src/media" \
+  -v static_data:/app/src/staticfiles \
+  -v media_data:/app/src/media \
   -p 8020:8000 \
-  tsa-local
+  tsa-local:1.0.0
 ```
 
-Instead of listing every `-e` flag individually, you can pass `--env-file .env` to reuse the values
-already configured in your `.env` file. The API will then be reachable at
-[localhost:8020](http://localhost:8020), same as with Docker Compose.
+Every sensitive value is passed explicitly via its own `-e` flag rather than an `--env-file`, so
+it's clear from the command itself which variables the container receives; replace each
+`<placeholder>` with the corresponding value from your `.env` file. `static_data` and `media_data`
+are the same named volumes used by `docker-compose.yml` — Docker creates them automatically on
+first use. The API is then reachable at [localhost:8020](http://localhost:8020), same as with
+Docker Compose.
+
+### Running without Docker (local Python environment)
+
+If you want to run the API directly on your machine instead of in a container, you can use SQLite
+in dev mode and Django's built-in development server:
+
+```bash
+# 1. Clone the repo
+git clone git@github.com:TobiasMatthies/truck-signs-api.git
+cd truck-signs-api
+
+# 2. Copy the example environment file
+cp example.env .env
+
+# 3. Create and activate a virtual environment
+python -m venv venv
+source venv/bin/activate      # on Windows: venv\Scripts\activate
+
+# 4. Install dependencies
+pip install -r requirements.txt
+
+# 5. Apply database migrations (uses SQLite by default, see "Switching Between SQLite and PostgreSQL")
+python src/manage.py makemigrations
+python src/manage.py migrate
+
+# 6. Collect static files
+python src/manage.py collectstatic
+
+# 7. Start the development server
+python src/manage.py runserver
+```
+
+The app is now running at [localhost:8000](http://localhost:8000).
 
 ### Switching Between SQLite and PostgreSQL
 
@@ -241,9 +284,9 @@ The database backend is controlled entirely by the `MODE` environment variable
 (see `src/tsa_app/settings.py`):
 
 - `MODE` unset or `MODE=dev` → SQLite database file at `src/db.sqlite3`; no DB-related env vars
-  required. This is the default for the plain Python [Quick Start](#quick-start-local-python-environment).
+  required. This is the default when [running without Docker](#running-without-docker-local-python-environment).
 - `MODE=prod` → PostgreSQL, using `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DB_HOST` and
-  `DB_PORT` from `.env`. This is what the Docker setup uses by default.
+  `DB_PORT` from `.env`. This is what the [Docker setup](#quick-start-docker) uses by default.
 
 To point the app at a different PostgreSQL server (e.g. a managed cloud database instead of the
 `tsa_db` container), set `MODE=prod` and update `DB_HOST`/`DB_PORT`/`POSTGRES_*` accordingly — no
@@ -259,10 +302,11 @@ described in [Environment Configuration](#environment-configuration).
 
 Most of the models do what can be inferred from their name. The following notes clarify the
 purpose of some of the models:
-- __Category Model:__ The category of the vinyls in the store. It contains the title of the category as well as the basic properties shared among products that belong to a same category. For example, _Truck Logo_ is a category for all vinyls that has a logo of a truck plus some lines of letterings (note that the vinyls are instances of the model _Product_). Another category is _Fire Extinguisher_, that is for all vinyls that has a logo of a fire extinguisher.
-- __Lettering Item Category:__ This is the category of the lettering, for example: _Company Name_, _VIM NUMBER_, ... Each has a different pricing.
-- __Lettering Item Variations:__ This contains a foreign key to the __Lettering Item Category__ and the text added by the client.
-- __Product Variation:__ This model has the original product as a foreign key, plus the lettering lines (instances of the __Lettering Item Variations__ model) added by the client.
+
+- **Category Model:** The category of the vinyls in the store. It contains the title of the category as well as the basic properties shared among products that belong to a same category. For example, _Truck Logo_ is a category for all vinyls that has a logo of a truck plus some lines of letterings (note that the vinyls are instances of the model _Product_). Another category is _Fire Extinguisher_, that is for all vinyls that has a logo of a fire extinguisher.
+- **Lettering Item Category:** This is the category of the lettering, for example: _Company Name_, _VIM NUMBER_, ... Each has a different pricing.
+- **Lettering Item Variations:** This contains a foreign key to the **Lettering Item Category** and the text added by the client.
+- **Product Variation:** This model has the original product as a foreign key, plus the lettering lines (instances of the **Lettering Item Variations** model) added by the client.
 
 ### Brief Explanation of the Views
 
@@ -271,8 +315,8 @@ Most of the views are CBV imported from _rest_framework.generics_, and they allo
 The behavior of some of the views had to be modified to address functionalities such as creation of order and payment, as in this case, for example, both functionalities are implemented in the same view, and so a _GenericAPIView_ was the view from which it inherits. Another example of this is the _UploadCustomerImage_ View that takes the vinyl template uploaded by the clients and creates a new product based on it.
 
 > [!NOTE]
-> To create Truck vinyls with Truck logos in them, first create the __Category__ Truck Sign,
-> and then the __Product__ (can have any name). This is to make sure the frontend retrieves
+> To create Truck vinyls with Truck logos in them, first create the **Category** Truck Sign,
+> and then the **Product** (can have any name). This is to make sure the frontend retrieves
 > the Truck vinyls for display in the Product Grid as it only fetches the products of the
 > category Truck Sign.
 
@@ -294,7 +338,6 @@ The behavior of some of the views had to be modified to address functionalities 
 
 ### Desktop View
 
-
 <div style="padding: 0 5rem; width: 100%; display: flex; flex-direction: column; gap: 2rem; align-items: center; justify-content: center;">
 
 ![alt text](./src/screenshots/Admin_Panel_View.png)
@@ -315,16 +358,16 @@ The behavior of some of the views had to be modified to address functionalities 
 
 - [Docker Official Documentation](https://docs.docker.com/)
 - Dockerizing Django, PostgreSQL, guinicorn, and Nginx:
-    - Github repo of sunilale0: [Link](https://github.com/sunilale0/django-postgresql-gunicorn-nginx-dockerized/blob/master/README.md#nginx)
-    - Michael Herman article on testdriven.io: [Link](https://testdriven.io/blog/dockerizing-django-with-postgres-gunicorn-and-nginx/)
+  - Github repo of sunilale0: [Link](https://github.com/sunilale0/django-postgresql-gunicorn-nginx-dockerized/blob/master/README.md#nginx)
+  - Michael Herman article on testdriven.io: [Link](https://testdriven.io/blog/dockerizing-django-with-postgres-gunicorn-and-nginx/)
 
 ### Django and DRF
 
 - [Django Official Documentation](https://docs.djangoproject.com/en/5.2/)
 - Generate a new secret key: [Stackoverflow Link](https://stackoverflow.com/questions/41298963/is-there-a-function-for-generating-settings-secret-key-in-django)
 - Modify the Django Admin:
-    - Small modifications (add searching, columns, ...): [Link](https://realpython.com/customize-django-admin-python/)
-    - Modify Templates and css: [Link from Medium](https://medium.com/@brianmayrose/django-step-9-180d04a4152c)
+  - Small modifications (add searching, columns, ...): [Link](https://realpython.com/customize-django-admin-python/)
+  - Modify Templates and css: [Link from Medium](https://medium.com/@brianmayrose/django-step-9-180d04a4152c)
 - [Django Rest Framework Official Documentation](https://www.django-rest-framework.org/)
 - More about Nested Serializers: [Stackoverflow Link](https://stackoverflow.com/questions/51182823/django-rest-framework-nested-serializers)
 - More about GenericViews: [Testdriver.io Link](https://testdriven.io/blog/drf-views-part-2/)
